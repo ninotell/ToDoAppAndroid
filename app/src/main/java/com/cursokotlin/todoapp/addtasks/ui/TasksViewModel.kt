@@ -4,19 +4,41 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.cursokotlin.todoapp.addtasks.domain.AddTaskUseCase
+import com.cursokotlin.todoapp.addtasks.domain.DeleteTaskUseCase
+import com.cursokotlin.todoapp.addtasks.domain.GetTasksUseCase
+import com.cursokotlin.todoapp.addtasks.domain.UpdateTaskUseCase
+import com.cursokotlin.todoapp.ui.TasksUIState
+import com.cursokotlin.todoapp.ui.TasksUIState.*
 import com.cursokotlin.todoapp.ui.model.TaskModel
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-class TasksViewModel @Inject constructor() : ViewModel() {
+@HiltViewModel
+class TasksViewModel @Inject constructor(
+    private val addTaskUseCase: AddTaskUseCase,
+    getTasksUseCase: GetTasksUseCase,
+    private val updateTaskUseCase: UpdateTaskUseCase,
+    private val deleteTaskUseCase: DeleteTaskUseCase
+) : ViewModel() {
+
+    val uiState: StateFlow<TasksUIState> = getTasksUseCase()
+        .map(::Success)
+        .catch { Error(it) }
+        .stateIn( //Convierte un Flow en un StateFlow
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5000), //Cuanto tarda en detener
+            Loading //Estado inicial en Loading
+        )
 
     private var _showNewTaskDialog = MutableLiveData<Boolean>()
     var showNewTaskDialog: LiveData<Boolean> = _showNewTaskDialog
 
-    private var _taskList = mutableStateListOf<TaskModel>()
-    var taskList:List<TaskModel> = _taskList
-
     private var _newTask = MutableLiveData<String>()
-    var newTask:LiveData<String> = _newTask
+    var newTask: LiveData<String> = _newTask
 
     fun onCancelDialogClick() {
         _showNewTaskDialog.value = false
@@ -31,20 +53,23 @@ class TasksViewModel @Inject constructor() : ViewModel() {
     }
 
     fun onAddTaskClick(task: String) {
-        _taskList.add(TaskModel(task = task))
         _showNewTaskDialog.value = false
         _newTask.value = ""
+
+        viewModelScope.launch {
+            addTaskUseCase(TaskModel(task = task))
+        }
     }
 
     fun onTaskSelected(taskModel: TaskModel) {
-        val taskIndex = _taskList.indexOf(taskModel)
-        _taskList[taskIndex] = _taskList[taskIndex].let {
-            it.copy(selected = !taskModel.selected)
+        viewModelScope.launch {
+            updateTaskUseCase(taskModel.copy(selected = !taskModel.selected))
         }
     }
 
     fun onDeleteTask(taskModel: TaskModel) {
-        val task = taskList.find { it.id == taskModel.id }
-        _taskList.remove(task)
+        viewModelScope.launch {
+            deleteTaskUseCase(taskModel)
+        }
     }
 }

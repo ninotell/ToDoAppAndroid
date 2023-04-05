@@ -12,36 +12,64 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import com.cursokotlin.todoapp.ui.TasksUIState
 import com.cursokotlin.todoapp.ui.model.TaskModel
 
 @Composable
 fun TasksScreen(tasksViewModel: TasksViewModel) {
     val showNewTaskDialog by tasksViewModel.showNewTaskDialog.observeAsState(initial = false)
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        FAB(Modifier.align(Alignment.BottomEnd)) {
-            tasksViewModel.doOpenAddTaskDialog()
-        }
-        AddTaskDialog(
-            showNewTaskDialog,
-            tasksViewModel
-        )
-        Column(Modifier.fillMaxSize()) {
-            Title()
-            TasksList(tasksViewModel)
+    val uiState by produceState<TasksUIState>(
+        initialValue = TasksUIState.Loading,
+        key1 = lifecycle,
+        key2 = tasksViewModel
+    ) {
+        lifecycle.repeatOnLifecycle(state = Lifecycle.State.STARTED) {
+            tasksViewModel.uiState.collect { value = it }
         }
     }
+
+    when (uiState) {
+        is TasksUIState.Error -> {}
+        TasksUIState.Loading -> {
+            Box(modifier = Modifier.fillMaxSize()) {
+                CircularProgressIndicator(Modifier.align(Alignment.Center))
+            }
+        }
+        is TasksUIState.Success -> {
+            Box(modifier = Modifier.fillMaxSize()) {
+                FAB(Modifier.align(Alignment.BottomEnd)) {
+                    tasksViewModel.doOpenAddTaskDialog()
+                }
+                AddTaskDialog(
+                    showNewTaskDialog,
+                    tasksViewModel
+                )
+                Column(Modifier.fillMaxSize()) {
+                    Title()
+                    TasksList((uiState as TasksUIState.Success).tasks, tasksViewModel)
+                }
+            }
+        }
+    }
+
+
 }
 
 @Composable
@@ -57,10 +85,10 @@ fun Title() {
 }
 
 @Composable
-fun TasksList(tasksViewModel: TasksViewModel) {
-    val taskList: List<TaskModel> = tasksViewModel.taskList
+fun TasksList(tasks: List<TaskModel>, tasksViewModel: TasksViewModel) {
+
     LazyColumn() {
-        items(taskList, key = { it.id }) { task ->
+        items(tasks, key = { it.id }) { task ->
             TaskItem(task, tasksViewModel)
         }
     }
